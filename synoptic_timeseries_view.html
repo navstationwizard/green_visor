@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Synoptic Timeseries – KMIA/KMDW/KDEN</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #020617;
+      color: #f9fafb;
+      margin: 0;
+      padding: 12px;
+    }
+    h1 {
+      font-size: 18px;
+      margin: 0 0 6px;
+    }
+    .subtitle {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-bottom: 10px;
+    }
+    .grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .card {
+      border-radius: 12px;
+      border: 1px solid #1f2937;
+      padding: 8px 10px;
+      background: #020617;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .station {
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #38bdf8;
+      font-size: 12px;
+    }
+    .meta {
+      font-size: 11px;
+      color: #9ca3af;
+    }
+    .main-line {
+      font-size: 24px;
+      font-weight: 600;
+    }
+    .delta {
+      font-size: 12px;
+      margin-top: 2px;
+    }
+    .delta.up { color: #22c55e; }
+    .delta.down { color: #f97373; }
+    .delta.flat { color: #9ca3af; }
+    .metar {
+      font-size: 11px;
+      color: #9ca3af;
+      margin-top: 4px;
+      white-space: pre-wrap;
+    }
+    #updated-note {
+      font-size: 11px;
+      color: #9ca3af;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Synoptic Timeseries – KMIA · KMDW · KDEN</h1>
+  <div class="subtitle">
+    Last ~3 hours · HF METAR temps · data pulled from Synoptic /stations/timeseries
+  </div>
+
+  <div class="grid">
+    <div class="card" id="card-KMIA">
+      <div class="header">
+        <div class="station">KMIA · MIAMI</div>
+        <div class="meta" id="kmia-time">Last obs: —</div>
+      </div>
+      <div class="main-line" id="kmia-temp">--</div>
+      <div class="delta flat" id="kmia-delta">Δ period: --</div>
+      <div class="metar" id="kmia-metar">METAR: --</div>
+    </div>
+
+    <div class="card" id="card-KMDW">
+      <div class="header">
+        <div class="station">KMDW · CHICAGO MIDWAY</div>
+        <div class="meta" id="kmdw-time">Last obs: —</div>
+      </div>
+      <div class="main-line" id="kmdw-temp">--</div>
+      <div class="delta flat" id="kmdw-delta">Δ period: --</div>
+      <div class="metar" id="kmdw-metar">METAR: --</div>
+    </div>
+
+    <div class="card" id="card-KDEN">
+      <div class="header">
+        <div class="station">KDEN · DENVER</div>
+        <div class="meta" id="kden-time">Last obs: —</div>
+      </div>
+      <div class="main-line" id="kden-temp">--</div>
+      <div class="delta flat" id="kden-delta">Δ period: --</div>
+      <div class="metar" id="kden-metar">METAR: --</div>
+    </div>
+  </div>
+
+  <div id="updated-note">Last refreshed: —</div>
+
+  <script>
+    const TOKEN = "3d29210bd948454aa8747f558a6e72f5";
+    const STATIONS = ["KMIA", "KMDW", "KDEN"];
+
+    function fmtTime(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso);
+      return d.toLocaleString(undefined, {
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+    }
+
+    function updateStationCard(station) {
+      const stid = station.STID;
+      const lower = stid.toLowerCase();
+
+      const obs = station.OBSERVATIONS || {};
+      const times = obs.date_time || [];
+      const temps = obs.air_temp_set_1 || [];
+      const metars = obs.metar_set_1 || [];
+
+      const n = Math.min(times.length, temps.length);
+      if (n === 0) return;
+
+      const lastIndex = n - 1;
+      const firstTemp = temps[0];
+      const lastTemp = temps[lastIndex];
+      const lastTime = times[lastIndex];
+      const lastMetar = metars.length ? metars[metars.length - 1] : "--";
+
+      // Current temp
+      document.getElementById(lower + "-temp").textContent =
+        lastTemp != null ? lastTemp.toFixed(1) + " °F" : "--";
+
+      // Time
+      document.getElementById(lower + "-time").textContent =
+        "Last obs: " + fmtTime(lastTime);
+
+      // Delta
+      const delta = lastTemp - firstTemp;
+      const deltaEl = document.getElementById(lower + "-delta");
+      let cls = "delta flat";
+      let txt = "Δ period: 0.0 °F";
+      if (delta > 0.05) {
+        cls = "delta up";
+        txt = `Δ period: +${delta.toFixed(1)} °F`;
+      } else if (delta < -0.05) {
+        cls = "delta down";
+        txt = `Δ period: ${delta.toFixed(1)} °F`;
+      }
+      deltaEl.className = cls;
+      deltaEl.textContent = txt;
+
+      // METAR
+      document.getElementById(lower + "-metar").textContent =
+        "METAR: " + lastMetar;
+    }
+
+    async function fetchTimeseries() {
+      const url =
+        "https://api.synopticdata.com/v2/stations/timeseries" +
+        "?token=" + encodeURIComponent(TOKEN) +
+        "&stid=" + STATIONS.join(",") +
+        "&recent=180" +
+        "&vars=air_temp,metar" +
+        "&hfmetars=1" +
+        "&units=english";
+
+      const resp = await fetch(url);
+      const data = await resp.json();
+
+      if (!data.STATION || data.STATION.length === 0) {
+        console.error("No station data", data);
+        return;
+      }
+
+      data.STATION.forEach(station => {
+        if (STATIONS.includes(station.STID)) {
+          updateStationCard(station);
+        }
+      });
+
+      const now = new Date();
+      document.getElementById("updated-note").textContent =
+        "Last refreshed: " + now.toLocaleString();
+    }
+
+    async function refreshLoop() {
+      try {
+        await fetchTimeseries();
+      } catch (e) {
+        console.error("Error fetching timeseries", e);
+      }
+    }
+
+    refreshLoop();
+    setInterval(refreshLoop, 60000);
+  </script>
+</body>
+</html>
