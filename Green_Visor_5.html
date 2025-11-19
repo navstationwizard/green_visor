@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Synoptic Trading – KMIA / KMDW / KDEN</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #020617;
+      --card-bg: #020617;
+      --card-border: #1f2937;
+      --accent: #38bdf8;
+      --text-main: #f9fafb;
+      --text-muted: #9ca3af;
+      --up: #22c55e;
+      --down: #f97373;
+      --stale: #f97373;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #020617 0, #020617 35%, #000 100%);
+      color: var(--text-main);
+      margin: 0;
+      padding: 12px;
+    }
+    h1 {
+      font-size: 18px;
+      margin: 0 0 4px;
+    }
+    .subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .card {
+      background: radial-gradient(circle at top left, #0b1120 0, #020617 60%);
+      border-radius: 16px;
+      border: 1px solid var(--card-border);
+      padding: 10px 12px 10px;
+      box-shadow: 0 14px 30px rgba(0,0,0,0.7);
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .station {
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-size: 12px;
+    }
+    .meta {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .main-line {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .delta {
+      font-size: 12px;
+      margin-top: 2px;
+    }
+    .delta.up { color: var(--up); }
+    .delta.down { color: var(--down); }
+    .delta.flat { color: var(--text-muted); }
+    .secondary {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .metar {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      white-space: pre-wrap;
+    }
+    .chart-wrap {
+      margin-top: 5px;
+    }
+    svg {
+      width: 100%;
+      height: 80px;
+    }
+    .axis-line {
+      stroke: rgba(148,163,184,0.25);
+      stroke-width: 0.6;
+    }
+    .path-line {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 1.6;
+    }
+    .peak-dot {
+      fill: var(--accent);
+      stroke: #000;
+      stroke-width: 0.6;
+      cursor: pointer;
+    }
+    details {
+      margin-top: 4px;
+    }
+    details summary {
+      cursor: pointer;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    pre.obs-list {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin: 4px 0 0;
+      white-space: pre;
+    }
+    #updated-note, #stream-status {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Synoptic Trading – KMIA · KMDW · KDEN</h1>
+  <div class="subtitle">
+    HF METAR pulls every 20 s · UTC times · T, age, Δ6h, Δ15m, rate, peaks, wind · °C / °F
+  </div>
+
+  <div id="stream-status">Mode: HF timeseries pull (no WebSocket)</div>
+
+  <div class="grid">
+    <!-- KMIA -->
+    <div class="card" id="card-KMIA">
+      <div class="header">
+        <div class="station">KMIA · MIAMI</div>
+        <div class="meta" id="kmia-time">Last obs: —</div>
+      </div>
+      <div class="main-line" id="kmia-temp">--</div>
+      <div class="secondary" id="kmia-age">Age: -- min</div>
+      <div class="delta flat" id="kmia-delta">Δ 6h: --</div>
+      <div class="secondary" id="kmia-delta15">Δ 15m: --</div>
+      <div class="secondary" id="kmia-rate">Rate: --</div>
+      <div class="secondary" id="kmia-range">Range 6h: --</div>
+      <div class="secondary" id="kmia-peak3">Peak 3h: --</div>
+      <div class="secondary" id="kmia-peak6">Peak 6h: --</div>
+      <div class="secondary" id="kmia-wind-now">Wind now: --</div>
+      <div class="chart-wrap">
+        <svg id="kmia-svg" viewBox="0 0 100 50" preserveAspectRatio="none">
+          <line x1="0" y1="49" x2="100" y2="49" class="axis-line"></line>
+          <path id="kmia-path" class="path-line" d=""></path>
+          <circle id="kmia-peak-dot" class="peak-dot" cx="-10" cy="-10" r="1.8">
+            <title id="kmia-peak-title"></title>
+          </circle>
+        </svg>
+      </div>
+      <div class="metar" id="kmia-metar">METAR: --</div>
+      <details>
+        <summary>Observations (UTC, T, wind)</summary>
+        <pre id="kmia-obs-list" class="obs-list"></pre>
+      </details>
+    </div>
+
+    <!-- KMDW -->
+    <div class="card" id="card-KMDW">
+      <div class="header">
+        <div class="station">KMDW · CHICAGO MIDWAY</div>
+        <div class="meta" id="kmdw-time">Last obs: —</div>
+      </div>
+      <div class="main-line" id="kmdw-temp">--</div>
+      <div class="secondary" id="kmdw-age">Age: -- min</div>
+      <div class="delta flat" id="kmdw-delta">Δ 6h: --</div>
+      <div class="secondary" id="kmdw-delta15">Δ 15m: --</div>
+      <div class="secondary" id="kmdw-rate">Rate: --</div>
+      <div class="secondary" id="kmdw-range">Range 6h: --</div>
+      <div class="secondary" id="kmdw-peak3">Peak 3h: --</div>
+      <div class="secondary" id="kmdw-peak6">Peak 6h: --</div>
+      <div class="secondary" id="kmdw-wind-now">Wind now: --</div>
+      <div class="chart-wrap">
+        <svg id="kmdw-svg" viewBox="0 0 100 50" preserveAspectRatio="none">
+          <line x1="0" y1="49" x2="100" y2="49" class="axis-line"></line>
+          <path id="kmdw-path" class="path-line" d=""></path>
+          <circle id="kmdw-peak-dot" class="peak-dot" cx="-10" cy="-10" r="1.8">
+            <title id="kmdw-peak-title"></title>
+          </circle>
+        </svg>
+      </div>
+      <div class="metar" id="kmdw-metar">METAR: --</div>
+      <details>
+        <summary>Observations (UTC, T, wind)</summary>
+        <pre id="kmdw-obs-list" class="obs-list"></pre>
+      </details>
+    </div>
+
+    <!-- KDEN -->
+    <div class="card" id="card-KDEN">
+      <div class="header">
+        <div class="station">KDEN · DENVER</div>
+        <div class="meta" id="kden-time">Last obs: —</div>
+      </div>
+      <div class="main-line" id="kden-temp">--</div>
+      <div class="secondary" id="kden-age">Age: -- min</div>
+      <div class="delta flat" id="kden-delta">Δ 6h: --</div>
+      <div class="secondary" id="kden-delta15">Δ 15m: --</div>
+      <div class="secondary" id="kden-rate">Rate: --</div>
+      <div class="secondary" id="kden-range">Range 6h: --</div>
+      <div class="secondary" id="kden-peak3">Peak 3h: --</div>
+      <div class="secondary" id="kden-peak6">Peak 6h: --</div>
+      <div class="secondary" id="kden-wind-now">Wind now: --</div>
+      <div class="chart-wrap">
+        <svg id="kden-svg" viewBox="0 0 100 50" preserveAspectRatio="none">
+          <line x1="0" y1="49" x2="100" y2="49" class="axis-line"></line>
+          <path id="kden-path" class="path-line" d=""></path>
+          <circle id="kden-peak-dot" class="peak-dot" cx="-10" cy="-10" r="1.8">
+            <title id="kden-peak-title"></title>
+          </circle>
+        </svg>
+      </div>
+      <div class="metar" id="kden-metar">METAR: --</div>
+      <details>
+        <summary>Observations (UTC, T, wind)</summary>
+        <pre id="kden-obs-list" class="obs-list"></pre>
+      </details>
+    </div>
+  </div>
+
+  <div id="updated-note">Last update: —</div>
+
+  <script>
+    const TOKEN = "3d29210bd948454aa8747f558a6e72f5";
+    const STATIONS = ["KMIA", "KMDW", "KDEN"];
+    const HISTORY_MINUTES = 360; // 6h
+    const PULL_INTERVAL_MS = 20000; // 20 s
+    const STALE_THRESHOLD_MIN = 8; // NEW: stale if > 8 min
+    const TIMESERIES_URL = "https://api.synopticdata.com/v2/stations/timeseries";
+
+    const history = {};
+    STATIONS.forEach(st => {
+      history[st] = {
+        times: [],
+        temps: [],
+        windSpeeds: [],
+        windDirs: [],
+        metars: [],
+        tempLabel: "°F"
+      };
+    });
+
+    function fmtUTC(d) {
+      if (!(d instanceof Date)) d = new Date(d);
+      if (isNaN(d.getTime())) return "—";
+      return d.toLocaleString(undefined, {
+        timeZone: "UTC",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      }) + " UTC";
+    }
+
+    function fmtUTCShort(d) {
+      if (!(d instanceof Date)) d = new Date(d);
+      if (isNaN(d.getTime())) return "--:--";
+      return d.toLocaleTimeString(undefined, {
+        timeZone: "UTC",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      }) + "Z";
+    }
+
+    function pruneHistory(stid) {
+      const h = history[stid];
+      if (!h) return;
+      const now = Date.now();
+      const cutoff = now - HISTORY_MINUTES * 60 * 1000;
+      while (h.times.length && h.times[0].getTime() < cutoff) {
+        h.times.shift();
+        h.temps.shift();
+        h.windSpeeds.shift();
+        h.windDirs.shift();
+      }
+    }
+
+    function buildPath(values) {
+      if (!values || !values.length) return "";
+      const n = values.length;
+      let minVal = values[0], maxVal = values[0];
+      for (let i = 1; i < n; i++) {
+        if (values[i] < minVal) minVal = values[i];
+        if (values[i] > maxVal) maxVal = values[i];
+      }
+      const span = maxVal - minVal || 1;
+      let d = "";
+      for (let i = 0; i < n; i++) {
+        const x = (i / (n - 1 || 1)) * 100;
+        const norm = (values[i] - minVal) / span;
+        const y = 49 - norm * 40;
+        d += (i === 0 ? "M " : " L ") + x.toFixed(2) + " " + y.toFixed(2);
+      }
+      return d;
+    }
+
+    function toCF(value, baseIsCelsius) {
+      if (baseIsCelsius) {
+        const c = value;
+        const f = c * 9 / 5 + 32;
+        return { c, f };
+      } else {
+        const f = value;
+        const c = (f - 32) * 5 / 9;
+        return { c, f };
+      }
+    }
+
+    function updateSparkline(stid) {
+      const h = history[stid];
+      if (!h || !h.temps.length) return;
+      const lower = stid.toLowerCase();
+      const temps = h.temps;
+      const times = h.times;
+      const n = temps.length;
+      const pathEl = document.getElementById(lower + "-path");
+      const dotEl = document.getElementById(lower + "-peak-dot");
+      const titleEl = document.getElementById(lower + "-peak-title");
+
+      pathEl.setAttribute("d", buildPath(temps));
+
+      let minT = temps[0], maxT = temps[0], maxIdx = 0;
+      for (let i = 1; i < n; i++) {
+        if (temps[i] < minT) minT = temps[i];
+        if (temps[i] > maxT) {
+          maxT = temps[i];
+          maxIdx = i;
+        }
+      }
+      const span = maxT - minT || 1;
+      const x = (maxIdx / (n - 1 || 1)) * 100;
+      const norm = (temps[maxIdx] - minT) / span;
+      const y = 49 - norm * 40;
+      dotEl.setAttribute("cx", x.toFixed(2));
+      dotEl.setAttribute("cy", y.toFixed(2));
+
+      const baseIsC = history[stid].tempLabel.startsWith("°C");
+      const cf = toCF(maxT, baseIsC);
+      const peakTime = times[maxIdx];
+      if (titleEl) {
+        titleEl.textContent =
+          `6h peak: ${cf.c.toFixed(1)} °C / ${cf.f.toFixed(1)} °F at ${fmtUTC(peakTime)}`;
+      }
+    }
+
+    function updateObsList(stid) {
+      const h = history[stid];
+      if (!h || !h.temps.length) return;
+      const lower = stid.toLowerCase();
+      const el = document.getElementById(lower + "-obs-list");
+      if (!el) return;
+
+      const baseIsC = h.tempLabel.startsWith("°C");
+      const lines = [];
+      for (let i = 0; i < h.times.length; i++) {
+        const t = h.times[i];
+        const temp = h.temps[i];
+        const wsp = h.windSpeeds[i];
+        const wdr = h.windDirs[i];
+
+        const cf = toCF(temp, baseIsC);
+        const timeStr = fmtUTCShort(t);
+        const wspStr = (wsp != null && !isNaN(wsp)) ? `${wsp.toFixed(1)} kt` : "-- kt";
+        const wdrStr = (wdr != null && !isNaN(wdr)) ? `${Math.round(wdr)}°` : "---°";
+
+        lines.push(
+          `${timeStr}  T=${cf.c.toFixed(1)} °C / ${cf.f.toFixed(1)} °F  ` +
+          `WS=${wspStr}  WD=${wdrStr}`
+        );
+      }
+      el.textContent = lines.join("\n");
+    }
+
+    function updateStationCard(stid) {
+      const h = history[stid];
+      if (!h || !h.temps.length) return;
+      const lower = stid.toLowerCase();
+      const temps = h.temps;
+      const times = h.times;
+      const n = temps.length;
+      const now = new Date();
+
+      const firstTemp = temps[0];
+      const lastTemp = temps[n-1];
+      const firstTime = times[0];
+      const lastTime = times[n-1];
+
+      const baseIsC = h.tempLabel.startsWith("°C");
+
+      // Age & staleness (8 min threshold)
+      const ageMin = (now.getTime() - lastTime.getTime()) / 60000;
+      const ageEl = document.getElementById(lower + "-age");
+      ageEl.textContent = `Age: ${ageMin.toFixed(1)} min`;
+
+      // Current temp (both) + color if stale
+      const tempEl = document.getElementById(lower + "-temp");
+      const cfCurrent = toCF(lastTemp, baseIsC);
+      tempEl.textContent =
+        `${cfCurrent.c.toFixed(1)} °C / ${cfCurrent.f.toFixed(1)} °F`;
+      tempEl.style.color = ageMin > STALE_THRESHOLD_MIN ? "var(--stale)" : "";
+
+      // Time (UTC)
+      document.getElementById(lower + "-time").textContent =
+        "Last obs: " + fmtUTC(lastTime);
+
+      // Δ 6h
+      const delta = lastTemp - firstTemp;
+      const deltaCF = toCF(delta, baseIsC);
+      const deltaEl = document.getElementById(lower + "-delta");
+      let cls = "delta flat";
+      if (delta > 0.05) cls = "delta up";
+      else if (delta < -0.05) cls = "delta down";
+      deltaEl.className = cls;
+      if (Math.abs(delta) < 0.05) {
+        deltaEl.textContent = "Δ 6h: 0.0 °C / 0.0 °F";
+      } else {
+        const sign = delta > 0.05 ? "+" : "";
+        deltaEl.textContent =
+          `Δ 6h: ${sign}${deltaCF.c.toFixed(1)} °C / ${sign}${deltaCF.f.toFixed(1)} °F`;
+      }
+
+      // Δ 15m
+      const delta15El = document.getElementById(lower + "-delta15");
+      const cutoff15 = lastTime.getTime() - 15 * 60 * 1000;
+      let idx15 = -1;
+      for (let i = 0; i < n; i++) {
+        if (times[i].getTime() >= cutoff15) {
+          idx15 = i;
+          break;
+        }
+      }
+      if (idx15 === -1) {
+        delta15El.textContent = "Δ 15m: n/a";
+      } else {
+        const temp15 = temps[idx15];
+        const d15 = lastTemp - temp15;
+        const d15CF = toCF(d15, baseIsC);
+        if (Math.abs(d15) < 0.05) {
+          delta15El.textContent = "Δ 15m: 0.0 °C / 0.0 °F";
+        } else {
+          const sign15 = d15 > 0.05 ? "+" : "";
+          delta15El.textContent =
+            `Δ 15m: ${sign15}${d15CF.c.toFixed(1)} °C / ${sign15}${d15CF.f.toFixed(1)} °F`;
+        }
+      }
+
+      // Rate (6h)
+      const spanMs = lastTime.getTime() - firstTime.getTime();
+      const rateEl = document.getElementById(lower + "-rate");
+      if (spanMs > 0) {
+        const hrs = spanMs / (1000 * 60 * 60);
+        const rateBase = delta / hrs;
+        const rateCF = toCF(rateBase, baseIsC);
+        if (Math.abs(rateBase) < 0.001) {
+          rateEl.textContent = "Rate: 0.00 °C/hr / 0.00 °F/hr";
+        } else {
+          const signR = rateBase > 0 ? "+" : "";
+          rateEl.textContent =
+            `Rate: ${signR}${rateCF.c.toFixed(2)} °C/hr / ${signR}${rateCF.f.toFixed(2)} °F/hr`;
+        }
+      } else {
+        rateEl.textContent = "Rate: —";
+      }
+
+      // 6h range + peak
+      let minT6 = temps[0], maxT6 = temps[0], maxIdx6 = 0;
+      for (let i = 1; i < n; i++) {
+        if (temps[i] < minT6) minT6 = temps[i];
+        if (temps[i] > maxT6) {
+          maxT6 = temps[i];
+          maxIdx6 = i;
+        }
+      }
+      const min6CF = toCF(minT6, baseIsC);
+      const max6CF = toCF(maxT6, baseIsC);
+      document.getElementById(lower + "-range").textContent =
+        `Range 6h: ${min6CF.c.toFixed(1)} °C / ${min6CF.f.toFixed(1)} °F – ` +
+        `${max6CF.c.toFixed(1)} °C / ${max6CF.f.toFixed(1)} °F`;
+      const peakTime6 = times[maxIdx6];
+      document.getElementById(lower + "-peak6").textContent =
+        `Peak 6h: ${max6CF.c.toFixed(1)} °C / ${max6CF.f.toFixed(1)} °F at ${fmtUTC(peakTime6)}`;
+
+      // 3h peak
+      const cutoff3 = lastTime.getTime() - 180 * 60 * 1000;
+      let maxT3 = null, maxIdx3 = null;
+      for (let i = 0; i < n; i++) {
+        const t = times[i].getTime();
+        if (t >= cutoff3) {
+          if (maxT3 === null || temps[i] > maxT3) {
+            maxT3 = temps[i];
+            maxIdx3 = i;
+          }
+        }
+      }
+      const peak3El = document.getElementById(lower + "-peak3");
+      if (maxT3 === null) {
+        peak3El.textContent = "Peak 3h: n/a";
+      } else {
+        const cf3 = toCF(maxT3, baseIsC);
+        const peakTime3 = times[maxIdx3];
+        peak3El.textContent =
+          `Peak 3h: ${cf3.c.toFixed(1)} °C / ${cf3.f.toFixed(1)} °F at ${fmtUTC(peakTime3)}`;
+      }
+
+      // Current wind
+      let lastWS = null, lastWD = null;
+      for (let i = h.windSpeeds.length - 1; i >= 0; i--) {
+        if (h.windSpeeds[i] != null && !isNaN(h.windSpeeds[i])) {
+          lastWS = h.windSpeeds[i];
+          lastWD = (h.windDirs[i] != null && !isNaN(h.windDirs[i]))
+            ? h.windDirs[i]
+            : null;
+          break;
+        }
+      }
+      const windNowEl = document.getElementById(lower + "-wind-now");
+      if (lastWS == null) {
+        windNowEl.textContent = "Wind now: --";
+      } else {
+        const wsStr = `${lastWS.toFixed(1)} kt`;
+        const wdStr = lastWD != null ? `${Math.round(lastWD)}°` : "---°";
+        windNowEl.textContent = `Wind now: ${wdStr} / ${wsStr}`;
+      }
+
+      // METAR + sparkline + list
+      const metarEl = document.getElementById(lower + "-metar");
+      if (h.metars.length) {
+        metarEl.textContent = "METAR: " + h.metars[h.metars.length - 1];
+      } else {
+        metarEl.textContent = "METAR: --";
+      }
+
+      updateSparkline(stid);
+      updateObsList(stid);
+    }
+
+    async function refreshFromTimeseries() {
+      const url =
+        TIMESERIES_URL +
+        "?token=" + encodeURIComponent(TOKEN) +
+        "&stid=" + STATIONS.join(",") +
+        "&recent=" + HISTORY_MINUTES +
+        "&vars=air_temp,metar,wind_speed,wind_direction" +
+        "&hfmetars=1" +
+        "&units=english";
+
+      const resp = await fetch(url);
+      const data = await resp.json();
+      if (!data.STATION || !data.STATION.length) {
+        console.error("No station data", data);
+        return;
+      }
+
+      if (data.UNITS && data.UNITS.air_temp) {
+        const u = String(data.UNITS.air_temp).toLowerCase();
+        const label = u.startsWith("c") ? "°C" : "°F";
+        STATIONS.forEach(st => history[st].tempLabel = label);
+      }
+
+      STATIONS.forEach(stid => {
+        const h = history[stid];
+        h.times = [];
+        h.temps = [];
+        h.windSpeeds = [];
+        h.windDirs = [];
+        h.metars = [];
+      });
+
+      data.STATION.forEach(station => {
+        const stid = station.STID;
+        if (!STATIONS.includes(stid)) return;
+        const h = history[stid];
+        const obs = station.OBSERVATIONS || {};
+        const times = obs.date_time || [];
+        const temps = obs.air_temp_set_1 || [];
+        const wspd = obs.wind_speed_set_1 || [];
+        const wdir = obs.wind_direction_set_1 || [];
+        const mets = obs.metar_set_1 || [];
+
+        const n = Math.min(times.length, temps.length);
+        for (let i = 0; i < n; i++) {
+          const t = new Date(times[i]);
+          const v = temps[i];
+          if (v == null || isNaN(v)) continue;
+          h.times.push(t);
+          h.temps.push(Number(v));
+          h.windSpeeds.push(
+            (i < wspd.length && wspd[i] != null && !isNaN(wspd[i]))
+              ? Number(wspd[i])
+              : null
+          );
+          h.windDirs.push(
+            (i < wdir.length && wdir[i] != null && !isNaN(wdir[i]))
+              ? Number(wdir[i])
+              : null
+          );
+        }
+        for (let i = 0; i < mets.length; i++) {
+          h.metars.push(String(mets[i]));
+        }
+
+        pruneHistory(stid);
+        updateStationCard(stid);
+      });
+
+      const now = new Date();
+      document.getElementById("updated-note").textContent =
+        "Last update: " + fmtUTC(now);
+    }
+
+    (async () => {
+      try {
+        await refreshFromTimeseries();
+      } catch (e) {
+        console.error("Initial refresh failed:", e);
+      }
+      setInterval(() => {
+        refreshFromTimeseries().catch(err =>
+          console.error("Periodic refresh failed:", err)
+        );
+      }, PULL_INTERVAL_MS);
+    })();
+  </script>
+</body>
+</html>
